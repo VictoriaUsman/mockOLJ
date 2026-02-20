@@ -149,7 +149,7 @@ A unified SQLite database that ingests and connects data from **Hostaway**, **Op
 ## Example Queries & Results
 
 ### Query 1 — All communication for the guest arriving March 5th
-
+<img width="2194" height="1668" alt="18CC54C5-4F64-4450-83D7-770C9F2CDCDD" src="https://github.com/user-attachments/assets/57e23e8c-30bd-43ba-bfee-b561b5f67c38" />
 > *"Show me all communication related to the guest arriving on March 5th"*
 
 Uses `guest_key` (stable SCD identifier) to pull interactions across both versions of Sarah Chen's profile — her January SMS (linked to v1/Gmail) and her February SMS and call (linked to v2/ProtonMail) all appear in one result.
@@ -198,6 +198,7 @@ Sarah Chen  Cottage 3      gmail           2026-02-19 11:00:00  outbound   [Re: 
 ---
 
 ### Query 2 — Discord maintenance issues for Cottage 3 this month
+<img width="2190" height="1604" alt="F1649112-5FD2-46B0-91FF-0BB133DAF566" src="https://github.com/user-attachments/assets/2497c81c-7ba6-412e-b22e-fa79edf23bec" />
 
 > *"What maintenance issues were reported in Discord for Cottage 3 this month?"*
 
@@ -427,14 +428,16 @@ SQLite requires zero infrastructure, ships on every OS, and supports CTEs, views
 
 ---
 
-## Write-Up
+## Short Write-Up
 
 ### AI Tools Used
-This system was built using **Claude Code** (Anthropic's CLI tool, powered by Claude Sonnet 4.6). Claude designed the schema, wrote all SQL, generated the mock data, and executed the queries — working interactively with feedback on features like SCD Type 2 and cascading constraints.
+This system was built using **Claude Code** and **ChatGPT** (Anthropic's CLI tool, powered by Claude Sonnet 4.6). Claude designed the schema, wrote all SQL, generated the mock data, and executed the queries.
+
+The decision to add SCD Type 2 and cascading constraints came from me to make it more production-like ready.
 
 ### How Long It Took
-Approximately **1.5 hours** from first prompt to completed deliverable, including:
-- Schema design and iteration (SCD Type 2, cascading FKs, views)
+Approximately **30 minutes** from first prompt to completed deliverable, including:
+- Schema design and iteration (adding SCD Type 2, cascading FKs, views)
 - Writing realistic mock data across all four platforms
-- Writing and validating all queries against the live database
+- Writing, testing, abd validating all queries against the live database using Dbeaver
 - Documentation
