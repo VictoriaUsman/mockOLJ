@@ -15,6 +15,8 @@ CREATE TABLE IF NOT EXISTS webhook_inbox (
     id                  INTEGER  PRIMARY KEY AUTOINCREMENT,
     source              TEXT     NOT NULL DEFAULT 'openphone'
                                           CHECK(source IN ('openphone', 'hostaway')),
+    event_type          TEXT     NOT NULL DEFAULT 'sms'
+                                          CHECK(event_type IN ('sms', 'call', 'voicemail')),
     raw_payload         TEXT     NOT NULL,
     received_at         DATETIME NOT NULL DEFAULT (datetime('now')),
     status              TEXT     NOT NULL DEFAULT 'unprocessed'

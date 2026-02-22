@@ -638,6 +638,8 @@ CREATE TABLE IF NOT EXISTS webhook_inbox (
     id                  INTEGER  PRIMARY KEY AUTOINCREMENT,
     source              TEXT     NOT NULL DEFAULT 'openphone'
                                           CHECK(source IN ('openphone', 'hostaway')),
+    event_type          TEXT     NOT NULL DEFAULT 'sms'
+                                          CHECK(event_type IN ('sms', 'call', 'voicemail')),
     raw_payload         TEXT     NOT NULL,                   -- full JSON blob as received
     received_at         DATETIME NOT NULL DEFAULT (datetime('now')),
     status              TEXT     NOT NULL DEFAULT 'unprocessed'
@@ -648,7 +650,7 @@ CREATE TABLE IF NOT EXISTS webhook_inbox (
     last_attempted_at   DATETIME,
     processed_at        DATETIME,
     error_message       TEXT,                                -- populated when status='failed'
-    processed_table     TEXT,                                -- e.g. 'openphone_sms_messages'
+    processed_table     TEXT,                                -- 'openphone_sms_messages' | 'openphone_calls' | 'openphone_voicemails'
     processed_row_id    TEXT                                 -- PK of the final inserted row
 );
 

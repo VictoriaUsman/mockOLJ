@@ -176,15 +176,18 @@ DATA FLOW
 │  │                                                               │  │
 │  │  Decouples fast acknowledgment from processing:               │  │
 │  │    1. Receiver validates signature → writes raw JSON here     │  │
-│  │    2. Processing job maps payload → openphone_sms_messages    │  │
+│  │    2. Processing job checks event_type, maps to final table   │  │
 │  │    3. Failed rows tracked with error_message + attempts       │  │
 │  │                                                               │  │
 │  │  source       openphone | hostaway                            │  │
+│  │  event_type   sms | call | voicemail                          │  │
 │  │  raw_payload  full JSON blob as received                      │  │
 │  │  status       unprocessed → processing → processed | failed   │  │
 │  │  attempts     retry counter (incremented on each failure)     │  │
 │  │  processed_table + processed_row_id                           │  │
-│  │    → pointer to the final mapped row after success            │  │
+│  │    → openphone_sms_messages  (event_type = sms)               │  │
+│  │    → openphone_calls         (event_type = call)              │  │
+│  │    → openphone_voicemails    (event_type = voicemail)         │  │
 │  └───────────────────────────────────────────────────────────────┘  │
 └──────────────────────────────────────────────────────────────────────┘
 
