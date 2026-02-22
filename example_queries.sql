@@ -1,7 +1,9 @@
 -- =============================================================================
--- Example Queries — Centralized Property Management Data System
--- Demonstrates cross-platform querying across Hostaway, OpenPhone, Gmail, Discord
--- with SCD Type 2 guest/property dimension handling.
+-- Example Queries — Centralized Property Management MCP Database  v2
+-- Demonstrates cross-platform querying across Hostaway, OpenPhone (Quo),
+-- Gmail, Discord, and WhatsApp with SCD Type 2 guest/property handling.
+-- Queries 1-6 (+ bonus): v1 queries (unchanged, still valid).
+-- Queries 7-10: v2 queries covering trigger detection and outbound notifications.
 -- =============================================================================
 
 -- -----------------------------------------------------------------------------
@@ -207,3 +209,127 @@ WHERE strftime('%Y-%m', dm.sent_at) = strftime('%Y-%m', 'now')
   )
 GROUP BY cp.name
 ORDER BY maintenance_mentions DESC;
+
+
+-- =============================================================================
+-- v2 QUERIES — LLM Trigger Detection · Outbound Notifications · WhatsApp
+-- =============================================================================
+
+-- -----------------------------------------------------------------------------
+-- QUERY 7: "What open issues do we have right now, and what's been done about each?"
+--
+-- Uses the open_triggers view (sorted by severity DESC, detected_at DESC).
+-- The notifications_sent column counts how many automated responses have
+-- already gone out for each trigger.
+-- -----------------------------------------------------------------------------
+
+SELECT
+    ot.severity,
+    ot.trigger_type,
+    ot.detected_at,
+    ot.source_platform,
+    ot.property_name,
+    COALESCE(ot.guest_name, '(no guest)')   AS guest,
+    ot.status,
+    ot.notifications_sent,
+    SUBSTR(ot.raw_content, 1, 80)           AS trigger_content,
+    SUBSTR(ot.llm_reasoning, 1, 100)        AS why_flagged
+FROM open_triggers ot;
+
+
+-- -----------------------------------------------------------------------------
+-- QUERY 8: "Show me the complete audit trail for the Mountain Cabin A keypad issue"
+--
+-- Traces a single trigger from detection through every automated notification
+-- that went out in response. Useful for ops review and debugging.
+-- -----------------------------------------------------------------------------
+
+WITH target_trigger AS (
+    SELECT dt.id AS trigger_id, dt.detected_at, dt.trigger_type, dt.severity,
+           dt.source_platform, dt.status, dt.raw_content,
+           cg.first_name || ' ' || cg.last_name AS guest_name,
+           cp.name AS property_name
+    FROM detected_triggers dt
+    LEFT JOIN guests g              ON dt.guest_id    = g.id
+    LEFT JOIN current_guests cg     ON g.guest_key    = cg.guest_key
+    LEFT JOIN properties p          ON dt.property_id = p.id
+    LEFT JOIN current_properties cp ON p.property_key = cp.property_key
+    WHERE dt.trigger_type = 'checkin_issue'
+      AND cp.name = 'Mountain Cabin A'
+)
+SELECT
+    'TRIGGER'                       AS record_type,
+    tt.detected_at                  AS event_time,
+    tt.severity,
+    tt.source_platform              AS platform,
+    NULL                            AS recipient,
+    tt.raw_content                  AS content,
+    tt.status                       AS status
+FROM target_trigger tt
+
+UNION ALL
+
+SELECT
+    'NOTIFICATION'                  AS record_type,
+    n.queued_at,
+    NULL                            AS severity,
+    n.platform,
+    n.recipient,
+    n.message_body,
+    n.status
+FROM outbound_notifications n
+JOIN target_trigger tt ON n.trigger_id = tt.trigger_id
+
+ORDER BY event_time;
+
+
+-- -----------------------------------------------------------------------------
+-- QUERY 9: "Show me Emily Rodriguez's full WhatsApp conversation during her stay"
+--
+-- Joins through whatsapp_conversations → whatsapp_messages, resolved to the
+-- current guest profile. Includes delivery and read receipts.
+-- -----------------------------------------------------------------------------
+
+SELECT
+    wm.sent_at,
+    wm.direction,
+    CASE wm.direction
+        WHEN 'inbound'  THEN cg.first_name || ' ' || cg.last_name
+        WHEN 'outbound' THEN 'Property Ops (auto)'
+    END                             AS from_party,
+    wm.body,
+    wm.status                       AS delivery_status,
+    wm.delivered_at,
+    wm.read_at
+FROM whatsapp_messages wm
+JOIN whatsapp_conversations wc  ON wm.conversation_id = wc.id
+JOIN guests g                   ON wc.guest_id        = g.id
+JOIN current_guests cg          ON g.guest_key        = cg.guest_key
+WHERE cg.first_name = 'Emily'
+  AND cg.last_name  = 'Rodriguez'
+ORDER BY wm.sent_at;
+
+
+-- -----------------------------------------------------------------------------
+-- QUERY 10: "What did the system auto-send this month, grouped by platform
+--            and delivery status?"
+--
+-- Aggregates outbound_notifications by platform and status for the current
+-- month. Surfaces failed deliveries and delivery success rates by channel.
+-- -----------------------------------------------------------------------------
+
+SELECT
+    n.platform,
+    n.status,
+    COUNT(*)                                    AS message_count,
+    COUNT(DISTINCT n.trigger_id)                AS distinct_triggers,
+    MIN(n.queued_at)                            AS first_sent,
+    MAX(n.queued_at)                            AS last_sent,
+    -- Show which trigger types drove the most outbound traffic
+    GROUP_CONCAT(DISTINCT dt.trigger_type)      AS trigger_types
+FROM outbound_notifications n
+LEFT JOIN detected_triggers dt ON n.trigger_id = dt.id
+WHERE strftime('%Y-%m', n.queued_at) = strftime('%Y-%m', 'now')
+  AND n.initiated_by = 'system'
+GROUP BY n.platform, n.status
+ORDER BY n.platform, n.status;

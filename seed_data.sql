@@ -1,74 +1,194 @@
 -- =============================================================================
--- Mock Seed Data
--- Hostaway · OpenPhone · Gmail · Discord
--- Reference date: 2026-02-20
+-- Mock Seed Data  v2
+-- Hostaway · OpenPhone (Quo) · Gmail · Discord · WhatsApp
+-- + Trigger Detection · Outbound Notifications
+-- Reference date: 2026-02-25
 --
 -- SCD Type 2 examples:
 --   guests.G-001 (Sarah Chen) — email changed 2026-02-15, two versions exist.
---     Her reservation (created Feb 1) references surrogate id=1 (v1, the version
---     active at booking time). Post-Feb-15 SMS and calls reference id=5 (v2).
+--     Reservation R-1003 (created Feb 1) references surrogate id=1 (v1, the
+--     version active at booking time). Post-Feb-15 SMS and calls reference id=5.
 --
 --   properties.PROP-002 (Beach House 1) — address corrected 2026-01-01.
 --     Historical reservations from 2025 reference surrogate id=2 (v1).
 --     All 2026 reservations reference id=5 (v2, the corrected listing).
+--
+-- v2 additions over v1 seed:
+--   · properties: city, state, lat/lng, capacity, bedrooms, bathrooms
+--   · reservations: adults, children, infants, pets, base_rate, cleaning_fee,
+--                   platform_fee, total_price, hostaway_listing_id
+--   · openphone_calls: status, answered_at, call_route, phone_number_id
+--                      + call 3: Emily missed call → voicemail
+--   · openphone_sms_messages: status (delivery), phone_number_id
+--   · NEW: hostaway_listings, openphone_phone_numbers, openphone_voicemails
+--   · NEW: whatsapp_conversations + whatsapp_messages (Emily, Mountain Cabin A stay)
+--   · NEW: detected_triggers (5 LLM-detected events)
+--   · NEW: outbound_notifications (7 automated responses)
 -- =============================================================================
 
+PRAGMA foreign_keys = ON;
+
 -- -----------------------------------------------------------------------------
--- PROPERTIES (SCD Type 2)
+-- PROPERTIES (SCD Type 2) — v2: includes location and capacity fields
 -- -----------------------------------------------------------------------------
-INSERT INTO properties (id, property_key, name, address, hostaway_property_id, valid_from, valid_to, is_current) VALUES
-    -- Cottage 3: one version, no changes
+INSERT INTO properties (
+    id, property_key, name, address,
+    city, state, country, zipcode, lat, lng,
+    person_capacity, bedrooms_number, bathrooms_number,
+    hostaway_property_id, valid_from, valid_to, is_current
+) VALUES
     (1, 'PROP-001', 'Cottage 3',
-        '789 Lakeview Dr, Big Bear Lake, CA 92315',    'HA-001', '2025-06-01', NULL,         1),
+        '789 Lakeview Dr, Big Bear Lake, CA 92315',
+        'Big Bear Lake', 'CA', 'USA', '92315', 34.2439, -116.9114,
+        6, 3, 2.0,
+        'HA-001', '2025-06-01', NULL, 1),
 
     -- Beach House 1 v1: original address (typo in street number), expired 2026-01-01
     (2, 'PROP-002', 'Beach House 1',
-        '123 Ocean Ave, Malibu, CA 90265',             'HA-002', '2025-03-01', '2026-01-01', 0),
+        '123 Ocean Ave, Malibu, CA 90265',
+        'Malibu', 'CA', 'USA', '90265', 34.0259, -118.7798,
+        8, 4, 3.0,
+        'HA-002', '2025-03-01', '2026-01-01', 0),
 
-    -- Mountain Cabin A: one version
     (3, 'PROP-003', 'Mountain Cabin A',
-        '456 Pine Ridge Rd, South Lake Tahoe, CA 96150','HA-003','2025-09-01', NULL,         1),
+        '456 Pine Ridge Rd, South Lake Tahoe, CA 96150',
+        'South Lake Tahoe', 'CA', 'USA', '96150', 38.9399, -119.9772,
+        6, 3, 2.0,
+        'HA-003', '2025-09-01', NULL, 1),
 
     -- Beach House 1 v2: corrected address — active 2026-01-01 onward (current)
     (5, 'PROP-002', 'Beach House 1',
-        '125 Pacific Coast Hwy, Malibu, CA 90265',     'HA-002', '2026-01-01', NULL,         1);
+        '125 Pacific Coast Hwy, Malibu, CA 90265',
+        'Malibu', 'CA', 'USA', '90265', 34.0259, -118.7798,
+        8, 4, 3.0,
+        'HA-002', '2026-01-01', NULL, 1);
 
 -- -----------------------------------------------------------------------------
 -- GUESTS (SCD Type 2)
 -- -----------------------------------------------------------------------------
-INSERT INTO guests (id, guest_key, first_name, last_name, primary_email, primary_phone, valid_from, valid_to, is_current) VALUES
-    -- Sarah Chen v1: registered with Gmail; expires when she updates to ProtonMail
-    (1, 'G-001', 'Sarah',  'Chen',      'sarah.chen@gmail.com',   '+14155557821', '2026-01-01', '2026-02-15 10:00:00', 0),
+INSERT INTO guests (
+    id, guest_key, first_name, last_name,
+    primary_email, primary_phone,
+    valid_from, valid_to, is_current
+) VALUES
+    -- Sarah Chen v1: Gmail; expires when she updates to ProtonMail Feb 15
+    (1, 'G-001', 'Sarah', 'Chen',
+        'sarah.chen@gmail.com', '+14155557821',
+        '2026-01-01', '2026-02-15 10:00:00', 0),
 
-    -- Marcus Johnson: one version, no changes
-    (2, 'G-002', 'Marcus', 'Johnson',   'marcus.j@outlook.com',   '+13105554392', '2025-12-01', NULL,                  1),
+    (2, 'G-002', 'Marcus', 'Johnson',
+        'marcus.j@outlook.com', '+13105554392',
+        '2025-12-01', NULL, 1),
 
-    -- Emily Rodriguez: one version, no changes
-    (3, 'G-003', 'Emily',  'Rodriguez', 'emily.r@yahoo.com',      '+17145558834', '2026-01-01', NULL,                  1),
+    (3, 'G-003', 'Emily', 'Rodriguez',
+        'emily.r@yahoo.com', '+17145558834',
+        '2026-01-01', NULL, 1),
 
-    -- David Park: one version, no changes
-    (4, 'G-004', 'David',  'Park',      'dpark@gmail.com',        '+14085559121', '2025-06-01', NULL,                  1),
+    (4, 'G-004', 'David', 'Park',
+        'dpark@gmail.com', '+14085559121',
+        '2025-06-01', NULL, 1),
 
     -- Sarah Chen v2: switched to ProtonMail — current version
-    (5, 'G-001', 'Sarah',  'Chen',      's.chen@protonmail.com',  '+14155557821', '2026-02-15 10:00:00', NULL,         1);
+    (5, 'G-001', 'Sarah', 'Chen',
+        's.chen@protonmail.com', '+14155557821',
+        '2026-02-15 10:00:00', NULL, 1);
 
 -- -----------------------------------------------------------------------------
--- RESERVATIONS
--- guest_id and property_id reference the surrogate that was current at
--- the time the reservation was created.
+-- HOSTAWAY LISTINGS
+-- Full API snapshot — pricing, capacity, policies, check-in windows.
+-- One per active property.
 -- -----------------------------------------------------------------------------
-INSERT INTO reservations (id, hostaway_reservation_id, guest_id, property_id, check_in, check_out, status, channel, total_amount) VALUES
-    -- Marcus Johnson / Beach House 1 v2 (property corrected before this booking)
-    (1, 'R-1001', 2, 5, '2026-02-01', '2026-02-08', 'checked_out', 'airbnb',  1540.00),
+INSERT INTO hostaway_listings (
+    hostaway_listing_id, property_key, name, internal_listing_name,
+    address, city, state, country, country_code, zipcode, lat, lng,
+    person_capacity, bedrooms_number, beds_number, bathrooms_number, guest_bathrooms_number,
+    price, cleaning_fee, price_for_extra_person, min_nights, max_nights,
+    cancellation_policy, check_in_time_start, check_in_time_end, check_out_time,
+    instant_bookable, allow_same_day_booking,
+    amenities_json, last_synced_at
+) VALUES
+    -- Cottage 3: $200/night, sleeps 6, 3 bed / 2 bath, Big Bear Lake
+    ('HA-001', 'PROP-001', 'Cottage 3', 'Cottage 3 — Big Bear Lake',
+     '789 Lakeview Dr, Big Bear Lake, CA 92315',
+     'Big Bear Lake', 'CA', 'USA', 'US', '92315', 34.2439, -116.9114,
+     6, 3, 4, 2.0, 1.0,
+     200.00, 150.00, 25.00, 2, 30,
+     'moderate', 15, 20, 11,
+     1, 0,
+     '["WiFi","Hot Tub","BBQ Grill","Fire Pit","Lake View","Free Parking","Washer/Dryer","Full Kitchen","Pet Friendly"]',
+     '2026-02-22 00:00:00'),
+
+    -- Beach House 1: $220/night, sleeps 8, 4 bed / 3 bath, Malibu
+    ('HA-002', 'PROP-002', 'Beach House 1', 'Beach House 1 — Malibu',
+     '125 Pacific Coast Hwy, Malibu, CA 90265',
+     'Malibu', 'CA', 'USA', 'US', '90265', 34.0259, -118.7798,
+     8, 4, 6, 3.0, 2.0,
+     220.00, 175.00, 30.00, 3, 14,
+     'strict', 15, 18, 10,
+     0, 0,
+     '["WiFi","Ocean View","Private Beach Access","Kayak","BBQ Grill","Pet Friendly","Hot Tub","Outdoor Shower","Free Parking"]',
+     '2026-02-22 00:00:00'),
+
+    -- Mountain Cabin A: $195/night, sleeps 6, 3 bed / 2 bath, South Lake Tahoe
+    ('HA-003', 'PROP-003', 'Mountain Cabin A', 'Mountain Cabin A — South Lake Tahoe',
+     '456 Pine Ridge Rd, South Lake Tahoe, CA 96150',
+     'South Lake Tahoe', 'CA', 'USA', 'US', '96150', 38.9399, -119.9772,
+     6, 3, 4, 2.0, 1.0,
+     195.00, 150.00, 25.00, 2, 21,
+     'moderate', 16, 20, 10,
+     1, 0,
+     '["WiFi","Hot Tub","Fireplace","Snowshoe Equipment","Sleds","Star Gazing Deck","Free Parking","Full Kitchen"]',
+     '2026-02-22 00:00:00');
+
+-- -----------------------------------------------------------------------------
+-- OPENPHONE PHONE NUMBERS
+-- Maps our Quo numbers (PN... IDs) to labels / properties.
+-- -----------------------------------------------------------------------------
+INSERT INTO openphone_phone_numbers (openphone_number_id, phone_number, label, property_id)
+VALUES ('PN-001', '+18185550001', 'Main Ops Line', NULL);
+
+-- -----------------------------------------------------------------------------
+-- RESERVATIONS — v2: includes guest counts, financials, hostaway_listing_id
+-- guest_id and property_id reference the surrogate active at booking time.
+-- -----------------------------------------------------------------------------
+INSERT INTO reservations (
+    id, hostaway_reservation_id, guest_id, property_id, hostaway_listing_id,
+    check_in, check_out, status, channel,
+    adults, children, infants, pets,
+    base_rate, cleaning_fee, platform_fee, total_price, remaining_balance,
+    total_amount
+) VALUES
+    -- Marcus Johnson / Beach House 1 v2
+    -- 7 nights × $185/night = $1,295 + $150 cleaning + $95 Airbnb fee = $1,540
+    (1, 'R-1001', 2, 5, 'HA-002',
+     '2026-02-01', '2026-02-08', 'checked_out', 'airbnb',
+     3, 0, 0, 1,
+     1295.00, 150.00, 95.00, 1540.00, 0.00,
+     1540.00),
 
     -- Emily Rodriguez / Mountain Cabin A
-    (2, 'R-1002', 3, 3, '2026-02-25', '2026-03-01', 'confirmed',   'direct',   920.00),
+    -- 4 nights × $175/night = $700 + $150 cleaning + $70 direct booking = $920
+    (2, 'R-1002', 3, 3, 'HA-003',
+     '2026-02-25', '2026-03-01', 'confirmed', 'direct',
+     4, 0, 0, 0,
+     700.00, 150.00, 70.00, 920.00, 920.00,
+     920.00),
 
-    -- Sarah Chen / Cottage 3  — guest_id=1 (v1 was active on Feb 1 when booked)
-    (3, 'R-1003', 1, 1, '2026-03-05', '2026-03-10', 'confirmed',   'vrbo',    1250.00),
+    -- Sarah Chen v1 / Cottage 3 — guest_id=1 (v1 was active Feb 1 at booking time)
+    -- 5 nights × $200/night = $1,000 + $150 cleaning + $100 VRBO fee = $1,250
+    (3, 'R-1003', 1, 1, 'HA-001',
+     '2026-03-05', '2026-03-10', 'confirmed', 'vrbo',
+     2, 0, 0, 0,
+     1000.00, 150.00, 100.00, 1250.00, 1250.00,
+     1250.00),
 
     -- David Park / Beach House 1 v2 (Jan 2026 stay, v2 active since Jan 1)
-    (4, 'R-1004', 4, 5, '2026-01-10', '2026-01-15', 'checked_out', 'airbnb',  1100.00);
+    -- 5 nights × $176/night = $880 + $150 cleaning + $70 Airbnb = $1,100
+    (4, 'R-1004', 4, 5, 'HA-002',
+     '2026-01-10', '2026-01-15', 'checked_out', 'airbnb',
+     2, 0, 0, 0,
+     880.00, 150.00, 70.00, 1100.00, 0.00,
+     1100.00);
 
 -- -----------------------------------------------------------------------------
 -- HOSTAWAY CONVERSATIONS & MESSAGES
@@ -96,7 +216,7 @@ INSERT INTO hostaway_messages (conversation_id, sender_type, body, sent_at) VALU
     (2, 'guest', 'Perfect! We''ll have 4 adults. Is there enough bedding?',                                                       '2026-02-14 12:10:00'),
     (2, 'host',  'Absolutely — two king bedrooms plus a queen loft. Sleeps 6 comfortably!',                                      '2026-02-14 12:30:00');
 
--- Sarah Chen ↔ Cottage 3 (reservation linked to guest v1)
+-- Sarah Chen ↔ Cottage 3
 INSERT INTO hostaway_messages (conversation_id, sender_type, body, sent_at) VALUES
     (3, 'guest', 'Hi! Just booked Cottage 3 for March 5-10. So excited for our stay!',                                           '2026-02-01 08:30:00'),
     (3, 'host',  'Welcome Sarah! We''re thrilled to have you. Cottage 3 is stunning in early March.',                            '2026-02-01 09:00:00'),
@@ -113,89 +233,186 @@ INSERT INTO hostaway_messages (conversation_id, sender_type, body, sent_at) VALU
     (4, 'host',  'Same password as last time: BeachWave2024. See you on the 10th!',                    '2026-01-08 11:00:00');
 
 -- -----------------------------------------------------------------------------
--- OPENPHONE CALLS
--- Sarah's call (Feb 19) references guest_id=5 (v2 — she updated email Feb 15)
+-- OPENPHONE CALLS — v2: status, answered_at, call_route, phone_number_id
+-- Call 3: Emily's missed call on check-in day → triggers voicemail
 -- -----------------------------------------------------------------------------
-INSERT INTO openphone_calls (id, openphone_call_id, guest_id, guest_phone, our_phone, direction, duration_seconds, started_at, ended_at, summary) VALUES
-    (1, 'OP-CALL-001', 2, '+13105554392', '+18185550001', 'inbound', 262,
-     '2026-01-30 15:30:00', '2026-01-30 15:34:22',
+INSERT INTO openphone_calls (
+    id, openphone_call_id,
+    openphone_phone_number_id, guest_id,
+    guest_phone, our_phone, direction,
+    status, duration_seconds,
+    started_at, answered_at, ended_at,
+    call_route, summary
+) VALUES
+    -- Marcus Johnson (inbound, answered, parking + pet policy)
+    (1, 'OP-CALL-001', 'PN-001', 2,
+     '+13105554392', '+18185550001', 'inbound',
+     'completed', 262,
+     '2026-01-30 15:30:00', '2026-01-30 15:30:08', '2026-01-30 15:34:22',
+     'phone-number',
      'Marcus called to confirm parking and ask about pet policy. Confirmed pet-friendly with $50 deposit — added to reservation.'),
 
-    -- guest_id=5: Sarah v2 was current on Feb 19 (post email-change)
-    (2, 'OP-CALL-002', 5, '+14155557821', '+18185550001', 'inbound', 185,
-     '2026-02-19 10:15:00', '2026-02-19 10:18:05',
-     'Sarah called to confirm 1pm early check-in and asked about the fire pit. Both confirmed.');
+    -- Sarah Chen v2 (guest_id=5: post-email-change version was current on Feb 19)
+    (2, 'OP-CALL-002', 'PN-001', 5,
+     '+14155557821', '+18185550001', 'inbound',
+     'completed', 185,
+     '2026-02-19 10:15:00', '2026-02-19 10:15:06', '2026-02-19 10:18:05',
+     'phone-number',
+     'Sarah called to confirm 1pm early check-in and asked about the fire pit. Both confirmed.'),
 
--- Marcus Johnson transcript
-INSERT INTO openphone_call_transcripts (call_id, speaker, text, timestamp_offset_seconds) VALUES
-    (1, 'host',  'Good afternoon, property management, how can I help?',                                        0),
-    (1, 'guest', 'Hi, this is Marcus Johnson. I have a reservation at Beach House 1 starting February 1st.',    5),
-    (1, 'host',  'Of course, hi Marcus! Looking forward to your stay. What can I help with?',                  13),
-    (1, 'guest', 'I wanted to confirm parking — I''m driving up from San Diego with my truck.',                 20),
-    (1, 'host',  'No problem. The driveway fits two to three vehicles comfortably.',                            32),
-    (1, 'guest', 'Great. Also — can we bring our dog? Golden retriever, very well-behaved.',                   44),
-    (1, 'host',  'Good news — Beach House 1 is pet-friendly. There''s a $50 pet deposit I can add now.',       56),
-    (1, 'guest', 'Perfect, let''s do it. Thank you!',                                                          74),
-    (1, 'host',  'Done! Reservation updated. Looking forward to hosting you February 1st, Marcus.',            82),
-    (1, 'guest', 'Appreciate it. See you then. Bye!',                                                          93);
+    -- Emily Rodriguez: missed call on check-in day → goes to voicemail
+    (3, 'OP-CALL-003', 'PN-001', 3,
+     '+17145558834', '+18185550001', 'inbound',
+     'missed', 0,
+     '2026-02-25 16:47:00', NULL, '2026-02-25 16:47:22',
+     'phone-number',
+     NULL);
 
--- Sarah Chen transcript (call linked to guest v2)
-INSERT INTO openphone_call_transcripts (call_id, speaker, text, timestamp_offset_seconds) VALUES
-    (2, 'host',  'Hello, property management, how can I help?',                                                  0),
-    (2, 'guest', 'Hi, this is Sarah Chen. I have an upcoming stay at Cottage 3 on March 5th.',                  4),
-    (2, 'host',  'Hi Sarah! I have your reservation right here. How can I help?',                               11),
-    (2, 'guest', 'Wanted to confirm the 1pm early check-in we texted about — is that locked in?',               18),
-    (2, 'host',  'Yes! Housekeeping confirmed. You''re all set for a 1pm arrival on March 5th.',                27),
-    (2, 'guest', 'Perfect. Also — does the property have a fire pit? My husband is really hoping.',              40),
-    (2, 'host',  'Yes! There''s a beautiful stone fire pit in the backyard, and we provide firewood.',           51),
-    (2, 'guest', 'That''s amazing. We are going to love it. Thank you!',                                        65),
-    (2, 'host',  'We''re so excited for you. See you on March 5th, Sarah!',                                     73);
+-- Marcus Johnson call transcript
+INSERT INTO openphone_call_transcripts (
+    call_id, transcript_status, speaker, speaker_phone,
+    text, start_seconds, end_seconds, timestamp_offset_seconds
+) VALUES
+    (1, 'completed', 'host',  '+18185550001', 'Good afternoon, property management, how can I help?',                                       0,   4,  0),
+    (1, 'completed', 'guest', '+13105554392', 'Hi, this is Marcus Johnson. I have a reservation at Beach House 1 starting February 1st.',    5,  12,  5),
+    (1, 'completed', 'host',  '+18185550001', 'Of course, hi Marcus! Looking forward to your stay. What can I help with?',                  13,  19, 13),
+    (1, 'completed', 'guest', '+13105554392', 'I wanted to confirm parking — I''m driving up from San Diego with my truck.',                 20,  31, 20),
+    (1, 'completed', 'host',  '+18185550001', 'No problem. The driveway fits two to three vehicles comfortably.',                           32,  43, 32),
+    (1, 'completed', 'guest', '+13105554392', 'Great. Also — can we bring our dog? Golden retriever, very well-behaved.',                   44,  55, 44),
+    (1, 'completed', 'host',  '+18185550001', 'Good news — Beach House 1 is pet-friendly. There''s a $50 pet deposit I can add now.',       56,  73, 56),
+    (1, 'completed', 'guest', '+13105554392', 'Perfect, let''s do it. Thank you!',                                                          74,  81, 74),
+    (1, 'completed', 'host',  '+18185550001', 'Done! Reservation updated. Looking forward to hosting you February 1st, Marcus.',            82,  92, 82),
+    (1, 'completed', 'guest', '+13105554392', 'Appreciate it. See you then. Bye!',                                                          93, 103, 93);
+
+-- Sarah Chen call transcript
+INSERT INTO openphone_call_transcripts (
+    call_id, transcript_status, speaker, speaker_phone,
+    text, start_seconds, end_seconds, timestamp_offset_seconds
+) VALUES
+    (2, 'completed', 'host',  '+18185550001', 'Hello, property management, how can I help?',                                                  0,   3,  0),
+    (2, 'completed', 'guest', '+14155557821', 'Hi, this is Sarah Chen. I have an upcoming stay at Cottage 3 on March 5th.',                   4,  10,  4),
+    (2, 'completed', 'host',  '+18185550001', 'Hi Sarah! I have your reservation right here. How can I help?',                               11,  17, 11),
+    (2, 'completed', 'guest', '+14155557821', 'Wanted to confirm the 1pm early check-in we texted about — is that locked in?',               18,  26, 18),
+    (2, 'completed', 'host',  '+18185550001', 'Yes! Housekeeping confirmed. You''re all set for a 1pm arrival on March 5th.',                27,  39, 27),
+    (2, 'completed', 'guest', '+14155557821', 'Perfect. Also — does the property have a fire pit? My husband is really hoping.',              40,  50, 40),
+    (2, 'completed', 'host',  '+18185550001', 'Yes! There''s a beautiful stone fire pit in the backyard, and we provide firewood.',           51,  64, 51),
+    (2, 'completed', 'guest', '+14155557821', 'That''s amazing. We are going to love it. Thank you!',                                        65,  72, 65),
+    (2, 'completed', 'host',  '+18185550001', 'We''re so excited for you. See you on March 5th, Sarah!',                                     73,  80, 73);
+
+-- No transcript for call 3 (Emily): call was missed → went to voicemail
 
 -- -----------------------------------------------------------------------------
--- OPENPHONE SMS
--- Sarah's early SMS (Jan) reference guest_id=1 (v1, pre-email-change).
--- Sarah's later SMS (Feb 18-19, after the Feb 15 update) reference guest_id=5 (v2).
+-- OPENPHONE VOICEMAILS — v2: new table
+-- Emily left a voicemail after her missed call on check-in day.
+-- call_id=3 (the missed call)
+-- -----------------------------------------------------------------------------
+INSERT INTO openphone_voicemails (
+    call_id, voicemail_status, transcript, duration_seconds,
+    recording_url, created_at, processed_at
+) VALUES (
+    3, 'completed',
+    'Hi this is Emily Rodriguez, I just checked into Mountain Cabin A. The hot tub seems like it is only around 95 degrees — not sure if it needs more time to heat up. Also the front door keypad took a few tries on the first attempt, might want to check that. Otherwise the place is absolutely beautiful, we love it. Thanks so much!',
+    38,
+    'https://recordings.openphone.co/OP-CALL-003/voicemail.mp3',
+    '2026-02-25 16:47:30',
+    '2026-02-25 16:48:15'
+);
+
+-- -----------------------------------------------------------------------------
+-- OPENPHONE SMS — v2: includes status (delivery) and openphone_phone_number_id
+-- Inbound messages have no delivery status (they arrive; no tracking needed).
+-- Outbound messages carry Quo's delivery status.
 -- -----------------------------------------------------------------------------
 
 -- Sarah Chen v1 (guest_id=1) — Jan 15, initial inquiry before email change
-INSERT INTO openphone_sms_messages (openphone_sms_id, guest_id, guest_phone, our_phone, direction, body, sent_at) VALUES
-    ('SMS-001', 1, '+14155557821', '+18185550001', 'inbound',  'Hi, this is Sarah. Interested in Cottage 3 for early March — is it still available?',        '2026-01-15 13:05:00'),
-    ('SMS-002', 1, '+14155557821', '+18185550001', 'outbound', 'Hi Sarah! Yes, Cottage 3 is open March 5-10. Sending the booking link now.',                  '2026-01-15 13:12:00'),
-    ('SMS-003', 1, '+14155557821', '+18185550001', 'inbound',  'Booked! So excited. Quick question — is the hot tub working?',                               '2026-01-15 13:30:00'),
-    ('SMS-004', 1, '+14155557821', '+18185550001', 'outbound', 'Yes! Hot tub is fully operational and seats 6. You''ll love it.',                             '2026-01-15 13:38:00');
+INSERT INTO openphone_sms_messages (
+    openphone_sms_id, openphone_phone_number_id, guest_id,
+    guest_phone, our_phone, direction, body, status, sent_at
+) VALUES
+    ('SMS-001', 'PN-001', 1, '+14155557821', '+18185550001', 'inbound',
+     'Hi, this is Sarah. Interested in Cottage 3 for early March — is it still available?',
+     NULL, '2026-01-15 13:05:00'),
+    ('SMS-002', 'PN-001', 1, '+14155557821', '+18185550001', 'outbound',
+     'Hi Sarah! Yes, Cottage 3 is open March 5-10. Sending the booking link now.',
+     'delivered', '2026-01-15 13:12:00'),
+    ('SMS-003', 'PN-001', 1, '+14155557821', '+18185550001', 'inbound',
+     'Booked! So excited. Quick question — is the hot tub working?',
+     NULL, '2026-01-15 13:30:00'),
+    ('SMS-004', 'PN-001', 1, '+14155557821', '+18185550001', 'outbound',
+     'Yes! Hot tub is fully operational and seats 6. You''ll love it.',
+     'delivered', '2026-01-15 13:38:00');
 
 -- Sarah Chen v2 (guest_id=5) — Feb 18-19, after she updated her email on Feb 15
-INSERT INTO openphone_sms_messages (openphone_sms_id, guest_id, guest_phone, our_phone, direction, body, sent_at) VALUES
-    ('SMS-005', 5, '+14155557821', '+18185550001', 'outbound', 'Hi Sarah! Check-in is March 5th. Gate: 4821 · Door: 7392. Any questions, just text!',         '2026-02-18 09:00:00'),
-    ('SMS-006', 5, '+14155557821', '+18185550001', 'inbound',  'Thank you! Any chance we could do a 1pm early check-in instead of 3pm?',                     '2026-02-18 09:45:00'),
-    ('SMS-007', 5, '+14155557821', '+18185550001', 'outbound', 'Let me check with housekeeping and get back to you by end of day!',                           '2026-02-18 09:50:00');
+INSERT INTO openphone_sms_messages (
+    openphone_sms_id, openphone_phone_number_id, guest_id,
+    guest_phone, our_phone, direction, body, status, sent_at
+) VALUES
+    ('SMS-005', 'PN-001', 5, '+14155557821', '+18185550001', 'outbound',
+     'Hi Sarah! Check-in is March 5th. Gate: 4821 · Door: 7392. Any questions, just text!',
+     'delivered', '2026-02-18 09:00:00'),
+    ('SMS-006', 'PN-001', 5, '+14155557821', '+18185550001', 'inbound',
+     'Thank you! Any chance we could do a 1pm early check-in instead of 3pm?',
+     NULL, '2026-02-18 09:45:00'),
+    ('SMS-007', 'PN-001', 5, '+14155557821', '+18185550001', 'outbound',
+     'Let me check with housekeeping and get back to you by end of day!',
+     'delivered', '2026-02-18 09:50:00');
 
 -- Marcus Johnson (guest_id=2)
-INSERT INTO openphone_sms_messages (openphone_sms_id, guest_id, guest_phone, our_phone, direction, body, sent_at) VALUES
-    ('SMS-010', 2, '+13105554392', '+18185550001', 'inbound',  'Hi! Marcus here. Just confirmed Beach House 1. Really looking forward to it.',                '2026-01-28 08:55:00'),
-    ('SMS-011', 2, '+13105554392', '+18185550001', 'outbound', 'Great to hear from you Marcus! Excited to host you. Anything I can help with?',               '2026-01-28 09:10:00'),
-    ('SMS-012', 2, '+13105554392', '+18185550001', 'outbound', 'Marcus — check-in day! Lock code is #2249. Text if anything comes up. Enjoy!',               '2026-02-01 08:00:00'),
-    ('SMS-013', 2, '+13105554392', '+18185550001', 'inbound',  'Quick heads up — the garbage disposal isn''t working. Not urgent.',                           '2026-02-07 14:20:00'),
-    ('SMS-014', 2, '+13105554392', '+18185550001', 'outbound', 'So sorry! We''ll fix it during turnover. Do you need it working before checkout tomorrow?',   '2026-02-07 14:35:00'),
-    ('SMS-015', 2, '+13105554392', '+18185550001', 'inbound',  'No worries, we managed fine. Thanks for the quick reply!',                                    '2026-02-07 14:50:00'),
-    ('SMS-016', 2, '+13105554392', '+18185550001', 'outbound', 'Hope checkout was smooth! Thanks for taking great care of the place. A review would mean the world!', '2026-02-08 12:00:00');
+INSERT INTO openphone_sms_messages (
+    openphone_sms_id, openphone_phone_number_id, guest_id,
+    guest_phone, our_phone, direction, body, status, sent_at
+) VALUES
+    ('SMS-010', 'PN-001', 2, '+13105554392', '+18185550001', 'inbound',
+     'Hi! Marcus here. Just confirmed Beach House 1. Really looking forward to it.',
+     NULL, '2026-01-28 08:55:00'),
+    ('SMS-011', 'PN-001', 2, '+13105554392', '+18185550001', 'outbound',
+     'Great to hear from you Marcus! Excited to host you. Anything I can help with?',
+     'delivered', '2026-01-28 09:10:00'),
+    ('SMS-012', 'PN-001', 2, '+13105554392', '+18185550001', 'outbound',
+     'Marcus — check-in day! Lock code is #2249. Text if anything comes up. Enjoy!',
+     'delivered', '2026-02-01 08:00:00'),
+    ('SMS-013', 'PN-001', 2, '+13105554392', '+18185550001', 'inbound',
+     'Quick heads up — the garbage disposal isn''t working. Not urgent.',
+     NULL, '2026-02-07 14:20:00'),
+    ('SMS-014', 'PN-001', 2, '+13105554392', '+18185550001', 'outbound',
+     'So sorry! We''ll fix it during turnover. Do you need it working before checkout tomorrow?',
+     'delivered', '2026-02-07 14:35:00'),
+    ('SMS-015', 'PN-001', 2, '+13105554392', '+18185550001', 'inbound',
+     'No worries, we managed fine. Thanks for the quick reply!',
+     NULL, '2026-02-07 14:50:00'),
+    ('SMS-016', 'PN-001', 2, '+13105554392', '+18185550001', 'outbound',
+     'Hope checkout was smooth! Thanks for taking great care of the place. A review would mean the world!',
+     'delivered', '2026-02-08 12:00:00');
 
 -- Emily Rodriguez (guest_id=3)
-INSERT INTO openphone_sms_messages (openphone_sms_id, guest_id, guest_phone, our_phone, direction, body, sent_at) VALUES
-    ('SMS-020', 3, '+17145558834', '+18185550001', 'inbound',  'Hi! Emily here. Looking forward to Mountain Cabin A! Is snowshoeing gear available?',         '2026-02-10 10:30:00'),
-    ('SMS-021', 3, '+17145558834', '+18185550001', 'outbound', 'Hi Emily! Two pairs of snowshoes in the garage + sleds for the hills. Super fun!',            '2026-02-10 10:42:00'),
-    ('SMS-022', 3, '+17145558834', '+18185550001', 'outbound', 'Emily — confirming Feb 25 arrival at Mountain Cabin A. Door code: 6614. Can''t wait!',        '2026-02-18 09:00:00'),
-    ('SMS-023', 3, '+17145558834', '+18185550001', 'inbound',  'Perfect! We are so excited. Will the hot tub be cleaned and ready?',                          '2026-02-18 09:30:00'),
-    ('SMS-024', 3, '+17145558834', '+18185550001', 'outbound', 'Absolutely — hot tub will be fresh and set to 104°F for your arrival.',                      '2026-02-18 09:45:00');
+INSERT INTO openphone_sms_messages (
+    openphone_sms_id, openphone_phone_number_id, guest_id,
+    guest_phone, our_phone, direction, body, status, sent_at
+) VALUES
+    ('SMS-020', 'PN-001', 3, '+17145558834', '+18185550001', 'inbound',
+     'Hi! Emily here. Looking forward to Mountain Cabin A! Is snowshoeing gear available?',
+     NULL, '2026-02-10 10:30:00'),
+    ('SMS-021', 'PN-001', 3, '+17145558834', '+18185550001', 'outbound',
+     'Hi Emily! Two pairs of snowshoes in the garage + sleds for the hills. Super fun!',
+     'delivered', '2026-02-10 10:42:00'),
+    ('SMS-022', 'PN-001', 3, '+17145558834', '+18185550001', 'outbound',
+     'Emily — confirming Feb 25 arrival at Mountain Cabin A. Door code: 6614. Can''t wait!',
+     'delivered', '2026-02-18 09:00:00'),
+    ('SMS-023', 'PN-001', 3, '+17145558834', '+18185550001', 'inbound',
+     'Perfect! We are so excited. Will the hot tub be cleaned and ready?',
+     NULL, '2026-02-18 09:30:00'),
+    ('SMS-024', 'PN-001', 3, '+17145558834', '+18185550001', 'outbound',
+     'Absolutely — hot tub will be fresh and set to 104°F for your arrival.',
+     'delivered', '2026-02-18 09:45:00');
 
 -- -----------------------------------------------------------------------------
 -- GMAIL THREADS & EMAILS
--- gmail_threads.guest_id points to the surrogate active at time of first email.
 -- -----------------------------------------------------------------------------
-
--- Thread 1: Marcus Johnson / Beach House 1
 INSERT INTO gmail_threads (id, gmail_thread_id, subject, guest_id, reservation_id) VALUES
-    (1, 'GT-001', 'Reservation Confirmation — Beach House 1, Feb 1-8 | Booking #R-1001', 2, 1);
+    (1, 'GT-001', 'Reservation Confirmation — Beach House 1, Feb 1-8 | Booking #R-1001', 2, 1),
+    -- Thread 2: guest_id=1 (Sarah v1 was active on Feb 18 when this email was sent)
+    (2, 'GT-002', 'Pre-Arrival Instructions — Cottage 3, March 5-10 | Booking #R-1003', 1, 3),
+    (3, 'GT-003', 'Your Upcoming Stay — Mountain Cabin A, Feb 25-Mar 1 | Booking #R-1002', 3, 2);
 
 INSERT INTO gmail_emails (gmail_message_id, thread_id, from_email, to_email, subject, body_text, sent_at, labels) VALUES
     ('GM-001', 1, 'host@propertymgmt.com', 'marcus.j@outlook.com',
@@ -211,10 +428,6 @@ INSERT INTO gmail_emails (gmail_message_id, thread_id, from_email, to_email, sub
      'Hi Marcus! Kayak is available — stored in the dock shed with life vests. And yes, Beach House 1 is pet-friendly! Added a $50 pet deposit; you''ll see the updated total in the Airbnb app. Looking forward to hosting you and your pup! The Management Team',
      '2026-01-26 09:15:00', '["inbox","sent","reservation"]');
 
--- Thread 2: Sarah Chen / Cottage 3 (guest_id=1, v1 was active on Feb 18 when email was sent)
-INSERT INTO gmail_threads (id, gmail_thread_id, subject, guest_id, reservation_id) VALUES
-    (2, 'GT-002', 'Pre-Arrival Instructions — Cottage 3, March 5-10 | Booking #R-1003', 1, 3);
-
 INSERT INTO gmail_emails (gmail_message_id, thread_id, from_email, to_email, subject, body_text, sent_at, labels) VALUES
     ('GM-010', 2, 'host@propertymgmt.com', 'sarah.chen@gmail.com',
      'Pre-Arrival Instructions — Cottage 3, March 5-10 | Booking #R-1003',
@@ -228,10 +441,6 @@ INSERT INTO gmail_emails (gmail_message_id, thread_id, from_email, to_email, sub
      'Re: Pre-Arrival Instructions — Cottage 3, March 5-10 | Booking #R-1003',
      'Hi Sarah! Great news — 1pm early check-in confirmed, no extra charge. Cell service: 1-2 bars AT&T/T-Mobile in most areas; WiFi is very reliable at 500 Mbps. See you March 5th! The Management Team',
      '2026-02-19 11:00:00', '["inbox","sent","check-in"]');
-
--- Thread 3: Emily Rodriguez / Mountain Cabin A
-INSERT INTO gmail_threads (id, gmail_thread_id, subject, guest_id, reservation_id) VALUES
-    (3, 'GT-003', 'Your Upcoming Stay — Mountain Cabin A, Feb 25-Mar 1 | Booking #R-1002', 3, 2);
 
 INSERT INTO gmail_emails (gmail_message_id, thread_id, from_email, to_email, subject, body_text, sent_at, labels) VALUES
     ('GM-020', 3, 'host@propertymgmt.com', 'emily.r@yahoo.com',
@@ -249,8 +458,8 @@ INSERT INTO gmail_emails (gmail_message_id, thread_id, from_email, to_email, sub
 
 -- -----------------------------------------------------------------------------
 -- DISCORD CHANNELS
--- property_id references the current property surrogate (fine — channels are
--- created once and linked to the long-lived property, not a specific version).
+-- property_id references the current (long-lived) surrogate — channels are
+-- created once and not version-specific.
 -- -----------------------------------------------------------------------------
 INSERT INTO discord_channels (id, discord_channel_id, channel_name, server_name, property_id) VALUES
     (1, 'DC-001', 'cottage-3-ops',        'Property Ops HQ', 1),
@@ -258,9 +467,7 @@ INSERT INTO discord_channels (id, discord_channel_id, channel_name, server_name,
     (3, 'DC-003', 'mountain-cabin-a-ops', 'Property Ops HQ', 3),
     (4, 'DC-004', 'general',              'Property Ops HQ', NULL);
 
--- -----------------------------------------------------------------------------
--- DISCORD MESSAGES — Cottage 3 Maintenance (February 2026)
--- -----------------------------------------------------------------------------
+-- Cottage 3 ops channel — maintenance thread (February 2026)
 INSERT INTO discord_messages (discord_message_id, channel_id, author_username, author_display_name, content, sent_at) VALUES
     ('DM-001', 1, 'mgr_tony',    'Tony (Manager)',
      'Heads up — guest in Cottage 3 reported the hot tub isn''t heating to temp. Came in about an hour ago.',
@@ -284,7 +491,6 @@ INSERT INTO discord_messages (discord_message_id, channel_id, author_username, a
      'Replaced the blind in Cottage 3 master bedroom during today''s inspection. Looks great. Marking resolved.',
      '2026-02-20 13:10:00');
 
--- Non-maintenance Cottage 3 messages
 INSERT INTO discord_messages (discord_message_id, channel_id, author_username, author_display_name, content, sent_at) VALUES
     ('DM-008', 1, 'ops_rena', 'Rena (Ops)',
      'Cottage 3 turnover confirmed for March 4 in prep for March 5-10 booking (Sarah Chen, VRBO).',
@@ -292,25 +498,25 @@ INSERT INTO discord_messages (discord_message_id, channel_id, author_username, a
 
 -- Beach House 1 ops
 INSERT INTO discord_messages (discord_message_id, channel_id, author_username, author_display_name, content, sent_at, reservation_id) VALUES
-    ('DM-010', 2, 'ops_rena',         'Rena (Ops)',
+    ('DM-010', 2, 'ops_rena',        'Rena (Ops)',
      'Marcus Johnson checked in at Beach House 1. Smooth arrival, no issues. Pet deposit collected.',
      '2026-02-01 15:30:00', 1),
-    ('DM-011', 2, 'hskp_linda',       'Linda (Housekeeping)',
+    ('DM-011', 2, 'hskp_linda',      'Linda (Housekeeping)',
      'Marcus Johnson checked out of Beach House 1. Property in great shape. Left a thank-you card!',
      '2026-02-08 11:15:00', 1),
-    ('DM-012', 2, 'mgr_tony',         'Tony (Manager)',
+    ('DM-012', 2, 'mgr_tony',        'Tony (Manager)',
      'Garbage disposal at Beach House 1 needs repair before next guest. Scheduling maintenance for Feb 10.',
      '2026-02-08 12:00:00', NULL),
-    ('DM-013', 2, 'vendor_handyman',  'Jake (Handyman)',
+    ('DM-013', 2, 'vendor_handyman', 'Jake (Handyman)',
      'Beach House 1 garbage disposal replaced. Tightened a loose towel rack in main bath while there. All good.',
      '2026-02-10 14:30:00', NULL);
 
--- Mountain Cabin A pre-arrival prep
+-- Mountain Cabin A pre-arrival + in-stay
 INSERT INTO discord_messages (discord_message_id, channel_id, author_username, author_display_name, content, sent_at, reservation_id) VALUES
-    ('DM-020', 3, 'ops_rena',   'Rena (Ops)',
+    ('DM-020', 3, 'ops_rena',  'Rena (Ops)',
      'Mountain Cabin A prep for Emily Rodriguez (Feb 25). Hot tub service booked Feb 24, housekeeping at 2pm. Stocking pantry basics.',
      '2026-02-18 10:00:00', 2),
-    ('DM-021', 3, 'mgr_tony',   'Tony (Manager)',
+    ('DM-021', 3, 'mgr_tony',  'Tony (Manager)',
      'Reminder: the Mountain Cabin A driveway had ice accumulation last week. Confirm salt/sand is stocked before Emily''s arrival.',
      '2026-02-19 09:30:00', 2);
 
@@ -319,3 +525,252 @@ INSERT INTO discord_messages (discord_message_id, channel_id, author_username, a
     ('DM-030', 4, 'mgr_tony', 'Tony (Manager)',
      'Team reminder: 3 properties active this weekend. Cottage 3 occupied, Beach House 1 turning over, Mountain Cabin A prepping. Stay sharp!',
      '2026-02-20 08:00:00');
+
+-- -----------------------------------------------------------------------------
+-- WHATSAPP CONVERSATIONS & MESSAGES — v2: new platform
+-- Emily Rodriguez contacts us via WhatsApp on her check-in day (Feb 25).
+-- Messages WM-002 and WM-004 are automated system responses (initiated_by='system').
+-- They also appear in outbound_notifications below.
+-- -----------------------------------------------------------------------------
+INSERT INTO whatsapp_conversations (
+    id, whatsapp_conversation_id, guest_id,
+    guest_phone, our_phone,
+    created_at, last_message_at
+) VALUES (
+    1, 'WC-001', 3,
+    '+17145558834', '+18185550010',   -- +18185550010 = our WhatsApp Business number
+    '2026-02-25 17:05:00', '2026-02-25 19:30:00'
+);
+
+INSERT INTO whatsapp_messages (
+    whatsapp_msg_id, conversation_id, direction, body,
+    status, sent_at, delivered_at, read_at
+) VALUES
+    -- Emily arrives, reports hot tub temp and keypad issue
+    ('WM-001', 1, 'inbound',
+     'Hi! Just checked in to Mountain Cabin A — it''s gorgeous! Quick thing: the hot tub seems to only be around 95°F, not 104°. Does it need more time to heat up? Also the front door keypad needed a few tries on the first attempt.',
+     'read', '2026-02-25 17:05:00', NULL, NULL),
+
+    -- Automated system response (LLM detected hot tub issue → auto-replied)
+    ('WM-002', 1, 'outbound',
+     'Hi Emily! So glad you love it! The hot tub typically needs 30-45 min to fully reheat after servicing. We''ve alerted our pool tech to do a remote check — you should hit 104°F within the hour. Enjoy your stay!',
+     'read', '2026-02-25 17:12:00', '2026-02-25 17:12:05', '2026-02-25 17:13:22'),
+
+    -- Emily follows up on keypad specifically
+    ('WM-003', 1, 'inbound',
+     'Perfect, thanks! One more thing on the keypad — we got it to work eventually but it took like 5 tries. Might just need a battery change?',
+     'read', '2026-02-25 17:35:00', NULL, NULL),
+
+    -- Automated system response (LLM detected keypad issue → auto-replied)
+    ('WM-004', 1, 'outbound',
+     'Thanks for flagging! You''re likely right — we''ll have maintenance check the battery this week. If you have any trouble, backup code is 0000. Enjoy the mountains!',
+     'read', '2026-02-25 17:38:00', '2026-02-25 17:38:04', '2026-02-25 17:39:01'),
+
+    -- Emily confirms hot tub is fixed
+    ('WM-005', 1, 'inbound',
+     'Hot tub is perfect now — exactly 104°F. Thank you!! The stars out here are incredible too. Perfect stay so far!',
+     'read', '2026-02-25 19:30:00', NULL, NULL);
+
+-- -----------------------------------------------------------------------------
+-- DETECTED TRIGGERS — v2: new table
+-- LLM detections from inbound messages across all platforms.
+-- source_table + source_row_id = polymorphic pointer to the triggering message.
+-- All five are resolved or acknowledged except DT-5 (keypad — still open).
+-- -----------------------------------------------------------------------------
+
+-- DT-1: Garbage disposal complaint — Marcus, Beach House 1, from SMS-013
+INSERT INTO detected_triggers (
+    detected_at, trigger_type, severity,
+    source_platform, source_table, source_row_id,
+    reservation_id, guest_id, property_id,
+    raw_content, llm_reasoning, llm_model, llm_confidence,
+    status, acknowledged_at, resolved_at, resolved_by
+) VALUES (
+    '2026-02-07 14:21:00', 'maintenance_issue', 'medium',
+    'openphone_sms', 'openphone_sms_messages',
+    (SELECT id FROM openphone_sms_messages WHERE openphone_sms_id = 'SMS-013'),
+    1, 2, 5,
+    'Quick heads up — the garbage disposal isn''t working. Not urgent.',
+    'Guest explicitly reported a broken garbage disposal. Marked medium (guest noted non-urgent; checkout is tomorrow, so repair is needed before next guest arrives).',
+    'claude-sonnet-4-6', 0.96,
+    'resolved', '2026-02-07 14:21:45', '2026-02-10 14:30:00', 'system'
+);
+
+-- DT-2: Hot tub not heating — Cottage 3, from Discord DM-001 (no guest, property-level)
+INSERT INTO detected_triggers (
+    detected_at, trigger_type, severity,
+    source_platform, source_table, source_row_id,
+    reservation_id, guest_id, property_id,
+    raw_content, llm_reasoning, llm_model, llm_confidence,
+    status, acknowledged_at, resolved_at, resolved_by
+) VALUES (
+    '2026-02-03 11:16:00', 'maintenance_issue', 'high',
+    'discord', 'discord_messages',
+    (SELECT id FROM discord_messages WHERE discord_message_id = 'DM-001'),
+    NULL, NULL, 1,
+    'Heads up — guest in Cottage 3 reported the hot tub isn''t heating to temp. Came in about an hour ago.',
+    'Manager reported guest complaint about hot tub temperature failure while guest is in-house. High severity: active guest impact, hot tub is a primary amenity. Immediate pool tech dispatch required.',
+    'claude-sonnet-4-6', 0.98,
+    'resolved', '2026-02-03 11:17:00', '2026-02-04 10:45:00', 'system'
+);
+
+-- DT-3: Early check-in scheduling request — Sarah Chen, Cottage 3, from SMS-006
+INSERT INTO detected_triggers (
+    detected_at, trigger_type, severity,
+    source_platform, source_table, source_row_id,
+    reservation_id, guest_id, property_id,
+    raw_content, llm_reasoning, llm_model, llm_confidence,
+    status, acknowledged_at, resolved_at, resolved_by
+) VALUES (
+    '2026-02-18 09:46:00', 'scheduling_problem', 'low',
+    'openphone_sms', 'openphone_sms_messages',
+    (SELECT id FROM openphone_sms_messages WHERE openphone_sms_id = 'SMS-006'),
+    3, 5, 1,
+    'Thank you! Any chance we could do a 1pm early check-in instead of 3pm?',
+    'Guest is requesting a 2-hour early check-in on March 5. Low severity: no active conflict, just needs housekeeping schedule confirmation. Flagged for ops team to verify turnover window.',
+    'claude-sonnet-4-6', 0.91,
+    'resolved', '2026-02-18 09:47:00', '2026-02-19 11:00:00', 'system'
+);
+
+-- DT-4: Hot tub temp on arrival — Emily Rodriguez, Mountain Cabin A, from WhatsApp WM-001
+INSERT INTO detected_triggers (
+    detected_at, trigger_type, severity,
+    source_platform, source_table, source_row_id,
+    reservation_id, guest_id, property_id,
+    raw_content, llm_reasoning, llm_model, llm_confidence,
+    status, acknowledged_at, resolved_at, resolved_by
+) VALUES (
+    '2026-02-25 17:06:00', 'maintenance_issue', 'medium',
+    'whatsapp', 'whatsapp_messages',
+    (SELECT id FROM whatsapp_messages WHERE whatsapp_msg_id = 'WM-001'),
+    2, 3, 3,
+    'Hi! Just checked in to Mountain Cabin A — it''s gorgeous! Quick thing: the hot tub seems to only be around 95°F, not 104°. Does it need more time to heat up?',
+    'Guest reported hot tub at 95°F instead of expected 104°F on check-in day. Medium severity: likely a reheating lag after same-day service, but needs pool tech confirmation. Guest also mentioned keypad issue (handled separately as DT-5).',
+    'claude-sonnet-4-6', 0.89,
+    'resolved', '2026-02-25 17:07:00', '2026-02-25 19:31:00', 'system'
+);
+
+-- DT-5: Front door keypad intermittent — Emily Rodriguez, Mountain Cabin A, from WhatsApp WM-003
+-- OPEN: physical maintenance check not yet scheduled
+INSERT INTO detected_triggers (
+    detected_at, trigger_type, severity,
+    source_platform, source_table, source_row_id,
+    reservation_id, guest_id, property_id,
+    raw_content, llm_reasoning, llm_model, llm_confidence,
+    status, acknowledged_at, resolved_at, resolved_by
+) VALUES (
+    '2026-02-25 17:36:00', 'checkin_issue', 'medium',
+    'whatsapp', 'whatsapp_messages',
+    (SELECT id FROM whatsapp_messages WHERE whatsapp_msg_id = 'WM-003'),
+    2, 3, 3,
+    'One more thing on the keypad — we got it to work eventually but it took like 5 tries. Might just need a battery change?',
+    'Guest is reporting the front door keypad requires multiple attempts to accept the code. Medium severity: guest has access but reliability is poor. Likely low-battery condition. Backup code provided; physical battery check needed before next guest.',
+    'claude-sonnet-4-6', 0.93,
+    'open', '2026-02-25 17:37:00', NULL, NULL
+);
+
+-- -----------------------------------------------------------------------------
+-- OUTBOUND NOTIFICATIONS — v2: new table
+-- Automated messages sent by the LLM system in response to detected triggers.
+-- Does NOT include human-sent SMS/emails (those stay in their source tables).
+-- platform_message_id for Discord entries = discord_message_id of the auto-post.
+-- platform_message_id for WhatsApp entries = whatsapp_msg_id of the auto-reply.
+-- -----------------------------------------------------------------------------
+
+-- N-1: Discord alert to beach-house-1-ops for DT-1 (garbage disposal)
+INSERT INTO outbound_notifications (
+    trigger_id, platform, recipient, message_body, initiated_by, status,
+    platform_message_id,
+    reservation_id, guest_id, property_id,
+    queued_at, sent_at, delivered_at
+) VALUES (
+    1, 'discord', 'DC-002',
+    '🔧 MAINTENANCE | Beach House 1 (R-1001 · Marcus Johnson): Guest reported garbage disposal not working. Non-urgent — repair needed before next guest. Adding to turnover list.',
+    'system', 'delivered', 'DM-AUTO-001',
+    1, 2, 5,
+    '2026-02-07 14:21:30', '2026-02-07 14:21:32', '2026-02-07 14:21:32'
+);
+
+-- N-2: Discord alert to cottage-3-ops for DT-2 (hot tub not heating — HIGH)
+INSERT INTO outbound_notifications (
+    trigger_id, platform, recipient, message_body, initiated_by, status,
+    platform_message_id,
+    reservation_id, guest_id, property_id,
+    queued_at, sent_at, delivered_at
+) VALUES (
+    2, 'discord', 'DC-001',
+    '🔴 HIGH PRIORITY | Cottage 3: Guest reported hot tub not reaching temperature — currently in-house. Immediate pool tech dispatch required. Contact Marco.',
+    'system', 'delivered', 'DM-AUTO-002',
+    NULL, NULL, 1,
+    '2026-02-03 11:16:15', '2026-02-03 11:16:17', '2026-02-03 11:16:17'
+);
+
+-- N-3: Discord alert to cottage-3-ops for DT-3 (early check-in request)
+INSERT INTO outbound_notifications (
+    trigger_id, platform, recipient, message_body, initiated_by, status,
+    platform_message_id,
+    reservation_id, guest_id, property_id,
+    queued_at, sent_at, delivered_at
+) VALUES (
+    3, 'discord', 'DC-001',
+    '📅 SCHEDULING | Cottage 3 (R-1003 · Sarah Chen · check-in Mar 5): Guest requesting 1pm early check-in instead of 3pm. Please confirm turnover availability with housekeeping.',
+    'system', 'delivered', 'DM-AUTO-003',
+    3, 5, 1,
+    '2026-02-18 09:46:30', '2026-02-18 09:46:32', '2026-02-18 09:46:32'
+);
+
+-- N-4: WhatsApp auto-reply to Emily for DT-4 (hot tub) — same message as WM-002
+INSERT INTO outbound_notifications (
+    trigger_id, platform, recipient, message_body, initiated_by, status,
+    platform_message_id,
+    reservation_id, guest_id, property_id,
+    queued_at, sent_at, delivered_at
+) VALUES (
+    4, 'whatsapp', '+17145558834',
+    'Hi Emily! So glad you love it! The hot tub typically needs 30-45 min to fully reheat after servicing. We''ve alerted our pool tech to do a remote check — you should hit 104°F within the hour. Enjoy your stay!',
+    'system', 'delivered', 'WM-002',
+    2, 3, 3,
+    '2026-02-25 17:07:00', '2026-02-25 17:12:00', '2026-02-25 17:12:05'
+);
+
+-- N-5: Discord alert to mountain-cabin-a-ops for DT-4 (hot tub ops alert)
+INSERT INTO outbound_notifications (
+    trigger_id, platform, recipient, message_body, initiated_by, status,
+    platform_message_id,
+    reservation_id, guest_id, property_id,
+    queued_at, sent_at, delivered_at
+) VALUES (
+    4, 'discord', 'DC-003',
+    '🔧 MAINTENANCE | Mountain Cabin A (R-1002 · Emily Rodriguez): Guest reports hot tub at ~95°F on arrival. Likely reheating lag. Pool tech please do remote diagnostics. Target 104°F within 45 min.',
+    'system', 'delivered', 'DM-AUTO-004',
+    2, 3, 3,
+    '2026-02-25 17:07:15', '2026-02-25 17:07:17', '2026-02-25 17:07:17'
+);
+
+-- N-6: WhatsApp auto-reply to Emily for DT-5 (keypad) — same message as WM-004
+INSERT INTO outbound_notifications (
+    trigger_id, platform, recipient, message_body, initiated_by, status,
+    platform_message_id,
+    reservation_id, guest_id, property_id,
+    queued_at, sent_at, delivered_at
+) VALUES (
+    5, 'whatsapp', '+17145558834',
+    'Thanks for flagging! You''re likely right — we''ll have maintenance check the battery this week. If you have any trouble, backup code is 0000. Enjoy the mountains!',
+    'system', 'delivered', 'WM-004',
+    2, 3, 3,
+    '2026-02-25 17:37:00', '2026-02-25 17:38:00', '2026-02-25 17:38:04'
+);
+
+-- N-7: Discord alert to mountain-cabin-a-ops for DT-5 (keypad — still open)
+INSERT INTO outbound_notifications (
+    trigger_id, platform, recipient, message_body, initiated_by, status,
+    platform_message_id,
+    reservation_id, guest_id, property_id,
+    queued_at, sent_at, delivered_at
+) VALUES (
+    5, 'discord', 'DC-003',
+    '⚠️ OPEN ISSUE | Mountain Cabin A (R-1002): Front door keypad intermittent — guest needed 5 attempts. Backup code 0000 provided. Schedule battery check before next turnover.',
+    'system', 'delivered', 'DM-AUTO-005',
+    2, 3, 3,
+    '2026-02-25 17:37:15', '2026-02-25 17:37:17', '2026-02-25 17:37:17'
+);
