@@ -786,11 +786,11 @@ INSERT INTO outbound_notifications (
 
 -- WI-1: processed — corresponds to SMS-013 (Marcus / garbage disposal)
 INSERT INTO webhook_inbox (
-    source, raw_payload, received_at,
+    source, event_type, raw_payload, received_at,
     status, attempts, last_attempted_at, processed_at,
     processed_table, processed_row_id
 ) VALUES (
-    'openphone',
+    'openphone', 'sms',
     '{"id":"SMS-013","phoneNumberId":"PN-001","userId":null,"from":"+13105554392","to":"+18185550001","text":"Quick heads up — the garbage disposal isn''t working. Not urgent.","status":"received","direction":"inbound","createdAt":"2026-02-07T14:20:00Z","conversationId":"CONV-MJ-002"}',
     '2026-02-07 14:20:01',
     'processed', 1, '2026-02-07 14:20:02', '2026-02-07 14:20:02',
@@ -800,10 +800,10 @@ INSERT INTO webhook_inbox (
 
 -- WI-2: unprocessed — Emily post-stay review text, just arrived
 INSERT INTO webhook_inbox (
-    source, raw_payload, received_at,
+    source, event_type, raw_payload, received_at,
     status, attempts
 ) VALUES (
-    'openphone',
+    'openphone', 'sms',
     '{"id":"SMS-030","phoneNumberId":"PN-001","userId":null,"from":"+17145558834","to":"+18185550001","text":"Hi just wanted to say we had the most amazing stay! Left a 5-star review on Airbnb. Hope to book again soon!","status":"received","direction":"inbound","createdAt":"2026-02-26T10:15:00Z","conversationId":"CONV-ER-001"}',
     '2026-02-26 10:15:01',
     'unprocessed', 0
@@ -811,11 +811,11 @@ INSERT INTO webhook_inbox (
 
 -- WI-3: failed — unknown number, no matching guest, 2 attempts
 INSERT INTO webhook_inbox (
-    source, raw_payload, received_at,
+    source, event_type, raw_payload, received_at,
     status, attempts, last_attempted_at,
     error_message
 ) VALUES (
-    'openphone',
+    'openphone', 'sms',
     '{"id":"SMS-031","phoneNumberId":"PN-001","userId":null,"from":"+19995551234","to":"+18185550001","text":"Hi, do you have availability for next weekend? Looking for something for 4 adults.","status":"received","direction":"inbound","createdAt":"2026-02-22T09:00:00Z","conversationId":"CONV-UNK-001"}',
     '2026-02-22 09:00:02',
     'failed', 2, '2026-02-22 09:05:00',
