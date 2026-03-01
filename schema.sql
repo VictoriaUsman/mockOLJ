@@ -1,6 +1,6 @@
 -- =============================================================================
 -- Centralized Property Management MCP Database
--- Schema v5: Hostaway · OpenPhone (Quo) · Gmail · Discord · WhatsApp
+-- Schema v6: Hostaway · OpenPhone (Quo) · Gmail · Discord · WhatsApp
 --            + LLM Trigger Detection · Outbound Notification Tracking
 --
 -- Data flows:
@@ -930,13 +930,16 @@ CREATE INDEX IF NOT EXISTS idx_sms_direction     ON openphone_sms_messages(direc
 CREATE INDEX IF NOT EXISTS idx_sms_phone_number  ON openphone_sms_messages(openphone_phone_number_id);
 
 -- =============================================================================
--- GMAIL: Threads & Emails (unchanged from v1)
+-- GMAIL: Threads & Emails
 -- Cascade: thread delete → email delete
 -- =============================================================================
 CREATE TABLE IF NOT EXISTS gmail_threads (
     id              INTEGER  PRIMARY KEY AUTOINCREMENT,
     gmail_thread_id TEXT     UNIQUE NOT NULL,
-    subject         TEXT,
+    delegate_email  TEXT,                               -- which mailbox (service-account)
+    subject         TEXT,                               -- thread snippet
+    message_count   INTEGER,                            -- messages in thread at last sync
+    history_id      TEXT,                               -- Gmail historyId for delta sync
     guest_id        INTEGER
                         REFERENCES guests(id)
                         ON DELETE SET NULL
@@ -965,6 +968,7 @@ CREATE TABLE IF NOT EXISTS gmail_emails (
 );
 
 CREATE INDEX IF NOT EXISTS idx_gmail_threads_guest    ON gmail_threads(guest_id);
+CREATE INDEX IF NOT EXISTS idx_gmail_threads_delegate ON gmail_threads(delegate_email);
 CREATE INDEX IF NOT EXISTS idx_gmail_emails_sent_at   ON gmail_emails(sent_at);
 
 -- =============================================================================
@@ -1374,4 +1378,4 @@ CREATE VIEW IF NOT EXISTS notification_log AS
 -- =============================================================================
 -- SCHEMA VERSION
 -- =============================================================================
-PRAGMA user_version = 4;
+PRAGMA user_version = 6;
